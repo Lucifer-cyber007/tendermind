@@ -6,6 +6,7 @@ Format mirrors CVC-accepted tender evaluation reports.
 import io
 from datetime import datetime
 from typing import List, Optional
+from xml.sax.saxutils import escape
 import pytz
 
 from reportlab.lib.pagesizes import A4
@@ -272,7 +273,7 @@ class AuditReportGenerator:
                 Paragraph("Yes" if c.get("is_mandatory") else "No", cell_style),
             ])
 
-        t = Table(crit_data, colWidths=[0.8 * cm, 6.7 * cm, 2.3 * cm, 1.8 * cm, 3.2 * cm, 1.2 * cm])
+        t = Table(crit_data, colWidths=[0.8 * cm, 6.3 * cm, 2.2 * cm, 1.7 * cm, 3.0 * cm, 2.0 * cm])
         t.setStyle(TableStyle([
             ("BACKGROUND", (0, 0), (-1, 0), MID_BLUE),
             ("TEXTCOLOR", (0, 0), (-1, 0), white),
@@ -302,33 +303,88 @@ class AuditReportGenerator:
             story.append(Paragraph("No matrix data available.", styles["body"]))
             return story
 
-        header = ["Criterion"] + [b["name"][:12] for b in bidders]
-        col_widths = [6 * cm] + [2.5 * cm] * len(bidders)
+        # Table width must match the SimpleDocTemplate frame (A4 − left/right margins).
+        usable_pt = A4[0] - 4 * cm
+        n_bidders = len(bidders)
+        min_bidder_pt = 1.25 * cm
+        max_crit_pt = usable_pt - n_bidders * min_bidder_pt
+        criterion_pt = max(4.2 * cm, min(8.5 * cm, max_crit_pt))
+        bidder_pt = (usable_pt - criterion_pt) / n_bidders
+        if bidder_pt < min_bidder_pt:
+            bidder_pt = min_bidder_pt
+            criterion_pt = usable_pt - n_bidders * bidder_pt
+        col_widths = [criterion_pt] + [bidder_pt] * n_bidders
+
+        matrix_crit_style = ParagraphStyle(
+            "matrix_crit",
+            parent=styles["body"],
+            fontName="Helvetica",
+            fontSize=7,
+            leading=8.5,
+            alignment=TA_LEFT,
+            wordWrap="CJK",
+        )
+        matrix_sym_style = ParagraphStyle(
+            "matrix_sym",
+            parent=styles["body"],
+            fontName="Helvetica",
+            fontSize=7.5,
+            leading=9,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
+        )
+        hdr_crit = ParagraphStyle(
+            "matrix_hdr_crit",
+            fontName="Helvetica-Bold",
+            fontSize=7,
+            leading=8,
+            textColor=white,
+            alignment=TA_LEFT,
+        )
+        hdr_bid = ParagraphStyle(
+            "matrix_hdr_bid",
+            fontName="Helvetica-Bold",
+            fontSize=7,
+            leading=8,
+            textColor=white,
+            alignment=TA_CENTER,
+            wordWrap="CJK",
+        )
+
+        header = [Paragraph("Criterion", hdr_crit)] + [
+            Paragraph(escape(str(b.get("name") or "—")), hdr_bid) for b in bidders
+        ]
         matrix_data = [header]
 
         verdict_symbols = {"pass": "✓", "fail": "✗", "ambiguous": "?", "missing": "–", None: "—"}
 
         for c in criteria:
-            row = [c["criterion_text"][:60]]
+            crit_text = escape(str(c.get("criterion_text") or "—"))
+            row = [Paragraph(crit_text, matrix_crit_style)]
             for b in bidders:
                 cell = matrix.get(f"{c['id']}_{b['id']}")
-                symbol = verdict_symbols.get(cell.get("ai_verdict") if cell else None, "—")
-                if cell and cell.get("officer_verdict"):
-                    symbol = f"[{symbol}]"  # officer-reviewed
-                row.append(symbol)
+                raw_verdict = None
+                if cell and isinstance(cell, dict):
+                    raw_verdict = cell.get("ai_verdict")
+                    if hasattr(raw_verdict, "value"):
+                        raw_verdict = raw_verdict.value
+                symbol = verdict_symbols.get(raw_verdict, "—")
+                if cell and isinstance(cell, dict) and cell.get("officer_verdict"):
+                    symbol = f"[{symbol}]"
+                row.append(Paragraph(escape(symbol), matrix_sym_style))
             matrix_data.append(row)
 
-        t = Table(matrix_data, colWidths=col_widths)
+        t = Table(matrix_data, colWidths=col_widths, repeatRows=1)
         style_cmds = [
             ("BACKGROUND", (0, 0), (-1, 0), MID_BLUE),
             ("TEXTCOLOR", (0, 0), (-1, 0), white),
-            ("FONT", (0, 0), (-1, 0), "Helvetica-Bold", 7),
-            ("FONT", (0, 1), (-1, -1), "Helvetica", 7),
             ("GRID", (0, 0), (-1, -1), 0.25, MID_GREY),
             ("ALIGN", (1, 0), (-1, -1), "CENTER"),
-            ("TOPPADDING", (0, 0), (-1, -1), 3),
-            ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+            ("VALIGN", (0, 0), (-1, -1), "TOP"),
+            ("TOPPADDING", (0, 0), (-1, -1), 4),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 4),
             ("LEFTPADDING", (0, 0), (-1, -1), 4),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 4),
             ("ROWBACKGROUNDS", (0, 1), (-1, -1), [white, LIGHT_GREY]),
         ]
         t.setStyle(TableStyle(style_cmds))

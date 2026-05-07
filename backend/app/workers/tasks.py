@@ -13,6 +13,7 @@ from sqlalchemy.orm import Session, sessionmaker
 
 from app.config import settings
 from app.services import llm_service
+from app.services.document_parser import extract_text_from_pdf
 from app.services.storage import storage_service
 from app.workers.celery_app import celery_app
 
@@ -66,7 +67,7 @@ def parse_tender_document(self, tender_id: int = None, document_id: int = None, 
 
         storage_key = minio_key or tender_doc.storage_url
         file_bytes = storage_service.download(storage_key)
-        text = _extract_pdf_text(file_bytes)
+        text = asyncio.run(extract_text_from_pdf(file_bytes))
 
         criteria = asyncio.run(llm_service.extract_criteria_from_document(text))
 
@@ -130,7 +131,7 @@ def parse_bidder_document(self, bidder_id: int = None, document_id: int = None, 
 
         storage_key = minio_key or bidder_doc.storage_url
         file_bytes = storage_service.download(storage_key)
-        text = _extract_pdf_text(file_bytes)
+        text = asyncio.run(extract_text_from_pdf(file_bytes))
 
         bidder_doc.parsed_text = text
         bidder_doc.page_count = max(1, text.count("\n\n"))

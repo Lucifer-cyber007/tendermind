@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useParams, useRouter } from "next/navigation";
-import { ChangeEvent, DragEvent, FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { useParams, useRouter, useSearchParams } from "next/navigation";
+import { ChangeEvent, DragEvent, FormEvent, Suspense, useEffect, useMemo, useRef, useState } from "react";
 
 import { api, apiClient, Bidder, Criterion, DecisionLogResponse, MatrixByBidder, MatrixCell, MatrixResponse, Tender, User } from "@/lib/api";
 
@@ -131,6 +131,7 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
   const params = useParams<{ id: string }>();
   const id = tenderId ?? params?.id ?? "";
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [activeTab, setActiveTab] = useState<TabKey>("overview");
 
@@ -333,6 +334,15 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
   }, [id]);
 
   useEffect(() => {
+    const tab = searchParams.get("tab");
+    if (!tab) return;
+    const key = tab as TabKey;
+    if (TABS.some((t) => t.key === key)) {
+      setActiveTab(key);
+    }
+  }, [searchParams]);
+
+  useEffect(() => {
     if (tenderLoad !== "success" || tenderNotFound) return;
     if (activeTab === "overview" || activeTab === "criteria") {
       void loadCriteria();
@@ -356,9 +366,6 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
     if (!["pending", "processing"].includes(tenderDocStatus.status)) return;
     const interval = window.setInterval(() => {
       void loadTenderDocumentStatus();
-      if (activeTab === "overview") {
-        void loadCriteria();
-      }
     }, 3000);
     return () => window.clearInterval(interval);
   }, [activeTab, tenderDocStatus.status]);
@@ -859,8 +866,71 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
 
               <div className="rounded-xl border border-blue-200 bg-blue-50 p-4">
                 <p className="text-sm font-semibold text-[#1B2B5E]">Next step guidance</p>
-                <p className="mt-2 text-sm text-blue-900">{nextStepGuidance}</p>
+                <div className="mt-2 space-y-2 text-sm text-blue-900">
+                  {tender.status === "evaluation_active" ? (
+                    <p>
+                      AI has identified matrix findings. Open the{" "}
+                      <Link href={`/dashboard/${id}/review`} className="font-semibold text-[#3B82F6] underline">
+                        Officer Review Queue
+                      </Link>{" "}
+                      or view the{" "}
+                      <Link href={`/dashboard/${id}/summary`} className="font-semibold text-[#3B82F6] underline">
+                        Evaluation Summary
+                      </Link>
+                      .
+                    </p>
+                  ) : null}
+                  {tender.status === "awaiting_approval" ? (
+                    <p>
+                      Complete outstanding checks in the{" "}
+                      <Link href={`/dashboard/${id}/review`} className="font-semibold text-[#3B82F6] underline">
+                        Officer Review Queue
+                      </Link>
+                      , then review the{" "}
+                      <Link href={`/dashboard/${id}/summary`} className="font-semibold text-[#3B82F6] underline">
+                        Evaluation Summary
+                      </Link>
+                      .
+                    </p>
+                  ) : null}
+                  {tender.status === "criteria_confirmed" ? (
+                    <p>
+                      Run evaluation from the{" "}
+                      <button
+                        type="button"
+                        onClick={() => setActiveTab("matrix")}
+                        className="font-semibold text-[#3B82F6] underline"
+                      >
+                        Evaluation Matrix
+                      </button>{" "}
+                      tab, then use the{" "}
+                      <Link href={`/dashboard/${id}/summary`} className="font-semibold text-[#3B82F6] underline">
+                        Evaluation Summary
+                      </Link>{" "}
+                      when results are ready.
+                    </p>
+                  ) : null}
+                  {!["evaluation_active", "awaiting_approval", "criteria_confirmed"].includes(tender.status) ? (
+                    <p>{nextStepGuidance}</p>
+                  ) : null}
+                </div>
               </div>
+              {tender.status !== "draft" ? (
+                <div className="mt-4 flex flex-row flex-wrap gap-3">
+                  <Link
+                    href={`/dashboard/${id}/summary`}
+                    className="inline-flex items-center justify-center rounded-lg bg-[#1B2B5E] px-4 py-2 text-sm font-medium text-white hover:bg-[#16264f]"
+                  >
+                    View Evaluation Summary
+                  </Link>
+                  <Link
+                    href={`/dashboard/${id}/review`}
+                    className="inline-flex items-center justify-center rounded-lg bg-[#1B2B5E] px-4 py-2 text-sm font-medium text-white hover:bg-[#16264f]"
+                  >
+                    Officer Review Queue
+                  </Link>
+                </div>
+              ) : null}
             </div>
           ) : null}
 
@@ -1104,7 +1174,7 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
                         <th className="min-w-[120px] px-4 py-3">Type</th>
                         <th className="min-w-[100px] px-4 py-3">Source</th>
                         <th className="min-w-[100px] px-4 py-3">Threshold</th>
-                        <th className="min-w-[80px] px-4 py-3">Mandatory</th>
+                        <th className="min-w-[120px] whitespace-nowrap px-4 py-3">Mandatory</th>
                         <th className="px-4 py-3">Actions</th>
                       </tr>
                     </thead>
@@ -1152,7 +1222,7 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
                               {criterion.source_section || criterion.source || "—"}
                             </td>
                             <td className="min-w-[100px] px-4 py-3 text-gray-600">{criterion.threshold || "—"}</td>
-                            <td className="min-w-[80px] px-4 py-3">
+                            <td className="min-w-[120px] whitespace-nowrap px-4 py-3">
                               {criterion.is_mandatory ? (
                                 <span className="text-green-700">Yes</span>
                               ) : (
@@ -1279,57 +1349,74 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
               ) : null}
 
               {matrixLoad === "success" && matrixData && matrixRows.length > 0 ? (
-                <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
-                  <table className="min-w-full text-left text-sm">
-                    <thead className="bg-gray-50">
-                      <tr>
-                        <th className="px-4 py-3">Criterion</th>
-                        {matrixData.bidders.map((bidder) => (
-                          <th key={bidder.bidder_id} className="px-4 py-3">
-                            {bidder.bidder_name}
-                          </th>
-                        ))}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {matrixRows.map((row) => (
-                        <tr key={row.criterionId} className="border-t border-gray-100">
-                          <td className="px-4 py-3 text-gray-700">{row.criterionText.slice(0, 40)}</td>
-                          {matrixData.bidders.map((bidder) => {
-                            const cell = row.cellsByBidder[bidder.bidder_id];
-                            const verdict = cell?.ai_verdict?.toString().toLowerCase() ?? "";
-                            const cls =
-                              verdict === "pass"
-                                ? "bg-green-50 text-green-700"
-                                : verdict === "fail"
-                                ? "bg-red-50 text-red-700"
-                                : verdict
-                                ? "bg-amber-50 text-amber-700"
-                                : "bg-gray-50 text-gray-400";
-                            const clickable =
-                              !!cell && (verdict === "ambiguous" || verdict === "missing" || (cell.flag_type && cell.flag_type !== "none"));
-                            return (
-                              <td key={bidder.bidder_id} className="px-4 py-3">
-                                <button
-                                  disabled={!clickable}
-                                  onClick={() => cell && openAmberCell(bidder, cell)}
-                                  className={`w-full rounded-lg px-2 py-2 text-center ${cls} ${
-                                    clickable ? "cursor-pointer hover:ring-2 hover:ring-amber-200" : "cursor-default"
-                                  }`}
-                                >
-                                  <div className="text-lg font-semibold">{verdictSymbol(verdict)}</div>
-                                  <div className="text-[11px]">
-                                    {cell?.confidence_score != null ? `${Math.round(cell.confidence_score * 100)}%` : "—"}
-                                  </div>
-                                </button>
-                              </td>
-                            );
-                          })}
+                <>
+                  <div className="overflow-x-auto rounded-xl border border-gray-200 bg-white">
+                    <table className="min-w-full text-left text-sm">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-4 py-3">Criterion</th>
+                          {matrixData.bidders.map((bidder) => (
+                            <th key={bidder.bidder_id} className="px-4 py-3">
+                              {bidder.bidder_name}
+                            </th>
+                          ))}
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+                      </thead>
+                      <tbody>
+                        {matrixRows.map((row) => (
+                          <tr key={row.criterionId} className="border-t border-gray-100">
+                            <td className="px-4 py-3 text-gray-700">{row.criterionText.slice(0, 40)}</td>
+                            {matrixData.bidders.map((bidder) => {
+                              const cell = row.cellsByBidder[bidder.bidder_id];
+                              const verdict = cell?.ai_verdict?.toString().toLowerCase() ?? "";
+                              const cls =
+                                verdict === "pass"
+                                  ? "bg-green-50 text-green-700"
+                                  : verdict === "fail"
+                                  ? "bg-red-50 text-red-700"
+                                  : verdict
+                                  ? "bg-amber-50 text-amber-700"
+                                  : "bg-gray-50 text-gray-400";
+                              const clickable =
+                                !!cell &&
+                                (verdict === "ambiguous" || verdict === "missing" || (cell.flag_type && cell.flag_type !== "none"));
+                              return (
+                                <td key={bidder.bidder_id} className="px-4 py-3">
+                                  <button
+                                    disabled={!clickable}
+                                    onClick={() => cell && openAmberCell(bidder, cell)}
+                                    className={`w-full rounded-lg px-2 py-2 text-center ${cls} ${
+                                      clickable ? "cursor-pointer hover:ring-2 hover:ring-amber-200" : "cursor-default"
+                                    }`}
+                                  >
+                                    <div className="text-lg font-semibold">{verdictSymbol(verdict)}</div>
+                                    <div className="text-[11px]">
+                                      {cell?.confidence_score != null ? `${Math.round(cell.confidence_score * 100)}%` : "—"}
+                                    </div>
+                                  </button>
+                                </td>
+                              );
+                            })}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                  <div className="flex flex-row flex-wrap gap-3">
+                    <Link
+                      href={`/dashboard/${id}/summary`}
+                      className="inline-flex items-center justify-center rounded-lg bg-[#1B2B5E] px-4 py-2 text-sm font-medium text-white hover:bg-[#16264f]"
+                    >
+                      View Evaluation Summary
+                    </Link>
+                    <Link
+                      href={`/dashboard/${id}/review`}
+                      className="inline-flex items-center justify-center rounded-lg bg-[#1B2B5E] px-4 py-2 text-sm font-medium text-white hover:bg-[#16264f]"
+                    >
+                      Officer Review Queue
+                    </Link>
+                  </div>
+                </>
               ) : null}
             </div>
           ) : null}
@@ -1527,7 +1614,24 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
   );
 }
 
+function TenderDetailFallback() {
+  return (
+    <main className="min-h-screen bg-[#F8FAFC] px-6 pt-24">
+      <div className="mx-auto max-w-7xl animate-pulse space-y-4">
+        <div className="h-10 w-1/2 rounded bg-slate-200" />
+        <div className="h-20 rounded bg-slate-200" />
+        <div className="h-12 rounded bg-slate-200" />
+        <div className="h-64 rounded bg-slate-200" />
+      </div>
+    </main>
+  );
+}
+
 export default function TenderDetailPage() {
   const { id } = useParams<{ id: string }>();
-  return <TenderDetailView tenderId={id} />;
+  return (
+    <Suspense fallback={<TenderDetailFallback />}>
+      <TenderDetailView tenderId={id} />
+    </Suspense>
+  );
 }

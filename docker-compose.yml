@@ -55,6 +55,8 @@ services:
       - ./backend/.env
     ports:
       - "8000:8000"
+    volumes:
+      - ./backend:/app
     command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
 
   celery_worker:
@@ -68,6 +70,8 @@ services:
         condition: service_healthy
     env_file:
       - ./backend/.env
+    volumes:
+      - ./backend:/app
     command: celery -A app.workers.celery_app.celery_app worker --loglevel=info --concurrency=4 -Q celery,parsing,evaluation
 
   flower:
@@ -81,6 +85,8 @@ services:
       - ./backend/.env
     ports:
       - "5555:5555"
+    volumes:
+      - ./backend:/app
     command: celery -A app.workers.celery_app.celery_app flower --port=5555
 
 volumes:

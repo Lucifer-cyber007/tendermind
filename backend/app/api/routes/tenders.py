@@ -171,11 +171,26 @@ async def start_evaluation(
     if not tender:
         raise HTTPException(status_code=404, detail="Tender not found")
 
-    if tender.status != TenderStatus.criteria_confirmed:
+    if tender.status == TenderStatus.closed:
+        raise HTTPException(status_code=400, detail="Closed tenders cannot be evaluated.")
+
+    criteria_result = await db.execute(select(TenderCriterion).where(TenderCriterion.tender_id == tender_id))
+    criteria = criteria_result.scalars().all()
+    if not criteria:
+        raise HTTPException(
+            status_code=400,
+            detail="No criteria available. Upload and process the tender document first.",
+        )
+
+    unconfirmed_count = sum(1 for criterion in criteria if not criterion.confirmed_by_officer)
+    if unconfirmed_count > 0:
         raise HTTPException(
             status_code=400,
             detail="All criteria must be confirmed by the officer before evaluation can begin.",
         )
+
+    if tender.status == TenderStatus.evaluation_active:
+        return {"status": "evaluation_already_active"}
 
     tender.status = TenderStatus.evaluation_active
     tender.evaluation_started_at = datetime.now(pytz.timezone("Asia/Kolkata"))
