@@ -30,7 +30,7 @@ class Settings(BaseSettings):
     OLLAMA_MODEL: str = "llama3.1:70b"
 
     # Object storage
-    S3_ENDPOINT: str
+    S3_ENDPOINT: str = "http://localhost:9000"
     S3_ACCESS_KEY: str
     S3_SECRET_KEY: str
     S3_BUCKET: str = "tendermind-documents"
