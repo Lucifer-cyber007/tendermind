@@ -176,6 +176,17 @@ def run_matrix_evaluation(self, tender_id: int):
         )
         bidders = db.query(Bidder).filter(Bidder.tender_id == tender_uuid).all()
 
+        if not criteria or not bidders:
+            tender.status = TenderStatus.criteria_confirmed if criteria else TenderStatus.draft
+            db.commit()
+            logger.warning(
+                "run_matrix_evaluation skipped — no cells to evaluate",
+                tender_id=str(tender_uuid),
+                criteria_count=len(criteria),
+                bidder_count=len(bidders),
+            )
+            return
+
         for criterion in criteria:
             criterion_payload = {
                 "description": criterion.criterion_text,

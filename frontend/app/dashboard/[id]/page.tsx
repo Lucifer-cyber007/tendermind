@@ -634,8 +634,11 @@ export function TenderDetailView({ tenderId, embedded = false, onBackToList }: T
       setMatrixPolling(true);
       await loadMatrix();
       await loadHeaderData();
-    } catch {
-      addToast("error", "Could not start evaluation.");
+    } catch (err: unknown) {
+      const detail =
+        (err as { response?: { data?: { detail?: string } } })?.response?.data?.detail ||
+        "Could not start evaluation.";
+      addToast("error", detail);
     } finally {
       setStartingEvaluation(false);
     }

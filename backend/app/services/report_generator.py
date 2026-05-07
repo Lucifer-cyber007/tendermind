@@ -205,7 +205,9 @@ class AuditReportGenerator:
 
             has_mandatory_fail = any(
                 mandatory_by_criterion_id.get(criterion_id, False)
-                and str(cell.get("ai_verdict") or "").lower() in {"red", "fail", "disqualifying"}
+                and str(
+                    cell.get("officer_verdict") or cell.get("ai_verdict") or ""
+                ).lower() in {"red", "fail", "disqualifying"}
                 for criterion_id, cell in bidder_cells
             )
 

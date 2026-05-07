@@ -162,7 +162,7 @@ async def start_evaluation(
     Queues cell evaluation tasks for all criteria × bidders.
     """
     from app.workers.tasks import evaluate_all_cells_for_tender
-    from app.models import TenderCriterion
+    from app.models import Bidder, TenderCriterion
     from datetime import datetime
     import pytz
 
@@ -186,7 +186,15 @@ async def start_evaluation(
     if unconfirmed_count > 0:
         raise HTTPException(
             status_code=400,
-            detail="All criteria must be confirmed by the officer before evaluation can begin.",
+            detail=f"{unconfirmed_count} criterion(s) still unconfirmed. Confirm all criteria first.",
+        )
+
+    bidders_result = await db.execute(select(Bidder).where(Bidder.tender_id == tender_id))
+    bidder_count = len(bidders_result.scalars().all())
+    if bidder_count == 0:
+        raise HTTPException(
+            status_code=400,
+            detail="Add at least one bidder before starting evaluation.",
         )
 
     if tender.status == TenderStatus.evaluation_active:
